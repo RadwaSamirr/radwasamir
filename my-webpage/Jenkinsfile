@@ -10,7 +10,7 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t my-webpage:latest .'
+                sh 'docker build -t my-webpage:latest my-webpage/'
             }
         }
     }
