@@ -2,38 +2,52 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = 'radwa-static-site'
-        CONTAINER_NAME = 'radwa-static-container'
-        PORT = '9094'
+        IMAGE_NAME = "radwasamir/static-web"
+        CONTAINER_NAME = "my-static-web"
+        PORT = "9094"
     }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/RadwaSamirr/radwasamir.git'
+            }
+        }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh 'docker build -t $IMAGE_NAME .'
+                    sh "docker build -t $IMAGE_NAME ."
                 }
             }
         }
 
-        stage('Run Container') {
+        stage('Run Docker Container') {
             steps {
                 script {
-                    // Stop and remove the old container if it exists
-                    sh '''
-                    docker rm -f $CONTAINER_NAME || true
-                    docker run -d -p $PORT:80 --name $CONTAINER_NAME $IMAGE_NAME
-                    '''
+                    // Stop and remove existing container if running
+                    sh """
+                        if [ \$(docker ps -q -f name=$CONTAINER_NAME) ]; then
+                            docker stop $CONTAINER_NAME
+                        fi
+                        if [ \$(docker ps -aq -f name=$CONTAINER_NAME) ]; then
+                            docker rm $CONTAINER_NAME
+                        fi
+
+                        docker run -d -p $PORT:80 --name $CONTAINER_NAME $IMAGE_NAME
+                    """
                 }
             }
         }
     }
 
     post {
-        success {
-            echo "✅ Website deployed at http://<your-server-ip>:$PORT"
-        }
         failure {
-            echo "❌ Build or deploy failed."
+            echo '❌ Build or deploy failed.'
+        }
+        success {
+            echo "✅ Website running at http://localhost:$PORT"
         }
     }
 }
+
