@@ -1,59 +1,40 @@
 pipeline {
     agent any
-
     stages {
         stage('Checkout Code') {
             steps {
-                git 'https://github.com/RadwaSamirr/radwasamir.git' // Assuming your code is in this repo
+                git 'https://github.com/RadwaSamirr/radwasamir.git'
             }
         }
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Define the Docker image name
                     def imageName = 'radwasamir/simple-html-website'
-
-                    // Build the Docker image
                     docker.build(imageName, '.') {
-                        // Optional: Specify a Dockerfile name if it's not just 'Dockerfile'
-                        // dockerfile 'path/to/your/Dockerfile'
                         args '--build-arg BUILD_DATE="$(date -u +\'%Y-%m-%dT%H:%M:%SZ\')"'
                     }
-
-                    // Optionally push the image to a Docker registry
-                    // You'll need to configure Docker credentials in Jenkins
-                    // docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
-                    //     docker.image(imageName).push('latest')
-                    // }
                 }
             }
-            stage('Run Docker Container (Optional)') {
-                steps {
-                    script {
-                        def imageName = 'radwasamir/simple-html-website'
-                        def containerName = 'simple-html-container'
-                        def portMapping = '80:80' // Host port:Container port
-
-                        // Stop and remove any existing container
-                        sh "docker stop ${containerName} || true"
-                        sh "docker rm ${containerName} || true"
-
-                        // Run the Docker container
-                        sh "docker run --name ${containerName} -p ${portMapping} -d ${imageName}"
-                        echo "Docker container '${containerName}' is running on port ${portMapping}"
-
-                        // Optional: Add steps to test your running website
-                        // sh 'curl http://localhost:80'
-                    }
+        }
+        stage('Run Docker Container (Optional)') {
+            steps {
+                script {
+                    def imageName = 'radwasamir/simple-html-website'
+                    def containerName = 'simple-html-container'
+                    def portMapping = '80:80'
+                    sh "docker stop ${containerName} || true"
+                    sh "docker rm ${containerName} || true"
+                    sh "docker run --name ${containerName} -p ${portMapping} -d ${imageName}"
+                    echo "Docker container '${containerName}' is running on port ${portMapping}"
                 }
             }
-            stage('Cleanup (Optional)') {
-                steps {
-                    script {
-                        def containerName = 'simple-html-container'
-                        sh "docker stop ${containerName} || true"
-                        sh "docker rm ${containerName} || true"
-                    }
+        }
+        stage('Cleanup (Optional)') {
+            steps {
+                script {
+                    def containerName = 'simple-html-container'
+                    sh "docker stop ${containerName} || true"
+                    sh "docker rm ${containerName} || true"
                 }
             }
         }
