@@ -17,8 +17,8 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo "🔨 Building image: $IMAGE_NAME"
-                    sh "docker build -t $IMAGE_NAME ."
+                    echo "🔨 Building image: my-webpage"
+                    sh "docker build -t my-webpage ."
                 }
             }
         }
@@ -26,13 +26,13 @@ pipeline {
         stage('Stop and Remove Existing Container') {
             steps {
                 script {
-                    echo "🛑 Stopping and removing container: $CONTAINER_NAME"
+                    echo "🛑 Stopping and removing container: 72ad98"
                     sh """
-                        if [ \$(docker ps -q -f name=$CONTAINER_NAME) ]; then
+                        if [ \$(docker ps -q -f name=72ad98) ]; then
                             docker stop $CONTAINER_NAME
                         fi
-                        if [ \$(docker ps -aq -f name=$CONTAINER_NAME) ]; then
-                            docker rm $CONTAINER_NAME
+                        if [ \$(docker ps -aq -f name=72ad98) ]; then
+                            docker rm 72ad98
                         fi
                     """
                 }
@@ -42,8 +42,8 @@ pipeline {
         stage('Run New Container') {
             steps {
                 script {
-                    echo "🚀 Running new container on port $PORT"
-                    sh "docker run -d -p $PORT:80 --name $CONTAINER_NAME $IMAGE_NAME"
+                    echo "🚀 Running new container on port 9094"
+                    sh "docker run -d -p $PORT:80 --name 72ad98 my-webpage"
                 }
             }
         }
@@ -54,7 +54,7 @@ pipeline {
             echo '❌ Deployment failed.'
         }
         success {
-            echo "✅ Static website is now running at http://localhost:$PORT"
+            echo "✅ Static website is now running at http://localhost:9094"
         }
     }
 }
