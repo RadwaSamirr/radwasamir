@@ -1,0 +1,19 @@
+button {
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+}
+p {
+    font-size: 20px;
+    font-weight: bold;
+}
+body {
+    background-color: #ADD8E6; /* Baby Blue */
+    display: flex;
+    justify-content: center;  /* Center horizontally */
+    align-items: center;      /* Center vertically */
+    height: 100vh;            /* Full screen height */
+    margin: 0;
+    flex-direction: column;   /* Stack items vertically */
+    text-align: center;
+}
