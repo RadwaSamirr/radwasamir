@@ -1,42 +1,60 @@
 pipeline {
     agent any
+
+    environment {
+        IMAGE_NAME = "my-webpage"
+        CONTAINER_NAME = "exciting_roentgen"
+        PORT = "9094"
+    }
+
     stages {
         stage('Checkout Code') {
             steps {
-                git 'https://github.com/RadwaSamirr/radwasamir.git'
+                git branch: 'main', url: 'https://github.com/RadwaSamirr/radwasamir.git'
             }
         }
+
         stage('Build Docker Image') {
             steps {
                 script {
-                    def imageName = 'radwasamir/simple-html-website'
-                    docker.build(imageName, '.') {
-                        args '--build-arg BUILD_DATE="$(date -u +\'%Y-%m-%dT%H:%M:%SZ\')"'
-                    }
+                    echo "🔨 Building image: $IMAGE_NAME"
+                    sh "docker build -t $IMAGE_NAME ."
                 }
             }
         }
-        stage('Run Docker Container (Optional)') {
+
+        stage('Stop and Remove Existing Container') {
             steps {
                 script {
-                    def imageName = 'radwasamir/simple-html-website'
-                    def containerName = 'simple-html-container'
-                    def portMapping = '80:80'
-                    sh "docker stop ${containerName} || true"
-                    sh "docker rm ${containerName} || true"
-                    sh "docker run --name ${containerName} -p ${portMapping} -d ${imageName}"
-                    echo "Docker container '${containerName}' is running on port ${portMapping}"
+                    echo "🛑 Stopping and removing container: $CONTAINER_NAME"
+                    sh """
+                        if [ \$(docker ps -q -f name=$CONTAINER_NAME) ]; then
+                            docker stop $CONTAINER_NAME
+                        fi
+                        if [ \$(docker ps -aq -f name=$CONTAINER_NAME) ]; then
+                            docker rm $CONTAINER_NAME
+                        fi
+                    """
                 }
             }
         }
-        stage('Cleanup (Optional)') {
+
+        stage('Run New Container') {
             steps {
                 script {
-                    def containerName = 'simple-html-container'
-                    sh "docker stop ${containerName} || true"
-                    sh "docker rm ${containerName} || true"
+                    echo "🚀 Running new container on port $PORT"
+                    sh "docker run -d -p $PORT:80 --name $CONTAINER_NAME $IMAGE_NAME"
                 }
             }
+        }
+    }
+
+    post {
+        failure {
+            echo '❌ Deployment failed.'
+        }
+        success {
+            echo "✅ Static website is now running at http://localhost:$PORT"
         }
     }
 }
