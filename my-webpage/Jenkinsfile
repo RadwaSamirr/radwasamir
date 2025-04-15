@@ -7,13 +7,6 @@ pipeline {
         PORT = '9094'
     }
 
-    stages {
-        stage('Clone Repository') {
-            steps {
-                git 'https://github.com/RadwaSamirr/radwasamir.git'
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
                 script {
