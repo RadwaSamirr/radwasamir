@@ -1,0 +1,41 @@
+pipeline {
+    agent any
+
+    environment {
+        VERSION = "v${new Date().format('yyyyMMddHHmmss')}"
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git 'https://github.com/RadwaSamirr/radwasamir.git'
+            }
+        }
+
+        stage('Build Image') {
+            steps {
+                script {
+                    sh "docker build -t flask-swagger-app:${VERSION} ."
+                    sh "docker tag flask-swagger-app:${VERSION} flask-swagger-app:latest"
+                    sh "docker save flask-swagger-app:${VERSION} -o images/flask-swagger-app-${VERSION}.tar"
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh "docker-compose down"
+                sh "docker-compose up -d"
+            }
+        }
+    }
+
+    post {
+        success {
+            slackSend(channel: '#deployments', message: "✅ Deployment Success: ${VERSION}")
+        }
+        failure {
+            slackSend(channel: '#deployments', message: "❌ Deployment Failed!")
+        }
+    }
+}
