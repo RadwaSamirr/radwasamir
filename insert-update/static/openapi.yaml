@@ -1,0 +1,65 @@
+openapi: 3.0.3
+info:
+  title: Score API
+  version: '1.0'
+servers:
+  - url: http://localhost:2222/
+paths:
+  /health-check:
+    get:
+      responses:
+        '200':
+          description: Success
+          content:
+            text/plain:
+              schema:
+                type: string
+  /score:
+    get:
+      operationId: get_score  # <--- Corrected keyword
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/score'
+    delete:
+      operationId: delete_score  
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/score'
+ 
+    put:
+      operationId: put_score  # <--- Corrected keyword
+      requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/score'
+      responses:
+        '200':
+          description: Success
+          
+components:
+  schemas:
+    score:
+      type: object
+      required:
+        - wins
+        - losses
+        - ties
+      properties:
+        wins:
+          type: integer
+          description: Number of wins
+        losses:
+          type: integer
+          description: Number of losses
+        ties:
+          type: integer

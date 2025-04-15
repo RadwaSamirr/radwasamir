@@ -1,0 +1,6 @@
+Flask
+Flask-CORS
+Flask-Swagger-UI
+SQLAlchemy  
+psycopg2-binary
+Flask-SQLAlchemy

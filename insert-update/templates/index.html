@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scoreboard</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: gray;
+            color: white;
+            display: flex;
+            justify-content: center; /* Center horizontally */
+            align-items: center; /* Center vertically */
+            min-height: 100vh; /* Ensure the body takes at least the full viewport height */
+            margin: 0; /* Remove default body margin */
+        }
+
+        .container {
+            background-color: #444; /* Darker gray for the container */
+            padding: 30px;
+            border: 2px solid white;
+            border-radius: 10px;
+            text-align: center; /* Center text within the container */
+        }
+
+        .score-display {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        input[type="number"] {
+            width: 100px;
+            margin-bottom: 10px;
+            color: black; /* Ensure input text is readable */
+        }
+
+        button {
+            padding: 8px 15px;
+            cursor: pointer;
+            background-color: #666; /* Slightly lighter gray for buttons */
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+
+        button:hover {
+            background-color: #888;
+        }
+
+        .message {
+            margin-top: 15px;
+            font-weight: bold;
+            color: lightgreen; /* Example message color */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Scoreboard</h1>
+
+        <div class="score-display">
+            <p>Wins: <span id="wins">{{ score.wins }}</span></p>
+            <p>Losses: <span id="losses">{{ score.losses }}</span></p>
+            <p>Ties: <span id="ties">{{ score.ties }}</span></p>
+        </div>
+
+        <h2>Update Score</h2>
+        <form id="update-form">
+            <label for="wins-input">Wins:</label>
+            <input type="number" id="wins-input" name="wins" value="{{ score.wins }}">
+
+            <label for="losses-input">Losses:</label>
+            <input type="number" id="losses-input" name="losses" value="{{ score.losses }}">
+
+            <label for="ties-input">Ties:</label>
+            <input type="number" id="ties-input" name="ties" value="{{ score.ties }}">
+
+            <button type="submit">Update Score</button>
+        </form>
+
+        {% if message %}
+            <div class="message">{{ message }}</div>
+        {% endif %}
+
+        <h2>Reset Component (Optional)</h2>
+        <form id="reset-form">
+            <label for="component-select">Select Component:</label>
+            <select id="component-select" name="component">
+                <option value="wins">Wins</option>
+                <option value="losses">Losses</option>
+                <option value="ties">Ties</option>
+            </select>
+            <button type="button" onclick="resetComponent()">Reset</button>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('update-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const formData = new FormData(this);
+            const data = {};
+            formData.forEach((value, key) => data[key] = parseInt(value));
+
+            fetch('/score', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+            })
+            .then(response => response.json())
+            .then(updatedScore => {
+                document.getElementById('wins').textContent = updatedScore.wins;
+                document.getElementById('losses').textContent = updatedScore.losses;
+                document.getElementById('ties').textContent = updatedScore.ties;
+                displayMessage('Score updated successfully!');
+            })
+            .catch(error => {
+                console.error('Error updating score:', error);
+                displayMessage('Error updating score.');
+            });
+        });
+
+        function resetComponent() {
+            const component = document.getElementById('component-select').value;
+            fetch(`/score/${component}`, {
+                method: 'DELETE',
+            })
+            .then(response => {
+                if (response.status === 204) {
+                    document.getElementById(component).textContent = 0;
+                    displayMessage(`${component.charAt(0).toUpperCase() + component.slice(1)} reset to 0.`);
+                } else if (response.status === 400) {
+                    displayMessage('Invalid component specified.');
+                } else {
+                    displayMessage('Error resetting component.');
+                }
+            })
+            .catch(error => {
+                console.error('Error resetting component:', error);
+                displayMessage('Error resetting component.');
+            });
+        }
+
+        function displayMessage(text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            messageDiv.textContent = text;
+            const form = document.getElementById('reset-form');
+            form.parentNode.insertBefore(messageDiv, form.nextSibling);
+            setTimeout(() => messageDiv.remove(), 3000); // Remove message after 3 seconds
+        }
+    </script>
+</body>
+</html>
