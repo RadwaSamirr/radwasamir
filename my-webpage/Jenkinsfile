@@ -1,56 +1,61 @@
 pipeline {
     agent any
 
-    environment {
-        IMAGE_NAME = "radwasamir/static-web"
-        CONTAINER_NAME = "my-static-web"
-        PORT = "9094"
-    }
-
     stages {
         stage('Checkout Code') {
             steps {
-                // You already checked out in Declarative SCM, this is optional
-                git branch: 'main', url: 'https://github.com/RadwaSamirr/radwasamir.git'
+                git 'https://github.com/RadwaSamirr/radwasamir.git' // Assuming your code is in this repo
             }
         }
-
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo "🔧 Building Docker image..."
-                    sh "docker build -t $IMAGE_NAME ."
+                    // Define the Docker image name
+                    def imageName = 'radwasamir/simple-html-website'
+
+                    // Build the Docker image
+                    docker.build(imageName, '.') {
+                        // Optional: Specify a Dockerfile name if it's not just 'Dockerfile'
+                        // dockerfile 'path/to/your/Dockerfile'
+                        args '--build-arg BUILD_DATE="$(date -u +\'%Y-%m-%dT%H:%M:%SZ\')"'
+                    }
+
+                    // Optionally push the image to a Docker registry
+                    // You'll need to configure Docker credentials in Jenkins
+                    // docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
+                    //     docker.image(imageName).push('latest')
+                    // }
                 }
             }
-        }
+            stage('Run Docker Container (Optional)') {
+                steps {
+                    script {
+                        def imageName = 'radwasamir/simple-html-website'
+                        def containerName = 'simple-html-container'
+                        def portMapping = '80:80' // Host port:Container port
 
-        stage('Run Docker Container') {
-            steps {
-                script {
-                    echo "🚀 Running container..."
-                    sh """
-                        # Stop running container if exists
-                        if [ \$(docker ps -q -f name=$CONTAINER_NAME) ]; then
-                            docker stop $CONTAINER_NAME
-                        fi
-                        # Remove container if exists
-                        if [ \$(docker ps -aq -f name=$CONTAINER_NAME) ]; then
-                            docker rm $CONTAINER_NAME
-                        fi
-                        # Run the new container
-                        docker run -d -p $PORT:80 --name $CONTAINER_NAME $IMAGE_NAME
-                    """
+                        // Stop and remove any existing container
+                        sh "docker stop ${containerName} || true"
+                        sh "docker rm ${containerName} || true"
+
+                        // Run the Docker container
+                        sh "docker run --name ${containerName} -p ${portMapping} -d ${imageName}"
+                        echo "Docker container '${containerName}' is running on port ${portMapping}"
+
+                        // Optional: Add steps to test your running website
+                        // sh 'curl http://localhost:80'
+                    }
                 }
             }
-        }
-    }
-
-    post {
-        failure {
-            echo '❌ Build or deploy failed.'
-        }
-        success {
-            echo "✅ Website running at http://localhost:$PORT"
+            stage('Cleanup (Optional)') {
+                steps {
+                    script {
+                        def containerName = 'simple-html-container'
+                        sh "docker stop ${containerName} || true"
+                        sh "docker rm ${containerName} || true"
+                    }
+                }
+            }
         }
     }
 }
