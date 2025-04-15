@@ -1,60 +1,18 @@
 pipeline {
     agent any
 
-    environment {
-        IMAGE_NAME = "my-webpage"
-        CONTAINER_NAME = "exciting_roentgen"
-        PORT = "9094"
-    }
-
     stages {
-        stage('Checkout Code') {
+        stage('Clone Repo') {
             steps {
-                git branch: 'main', url: 'https://github.com/RadwaSamirr/radwasamir.git'
+                git 'https://github.com/RadwaSamirr/radwasamir.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    echo "🔨 Building image: my-webpage"
-                    sh "docker build -t my-webpage ."
-                }
+                sh 'docker build -t my-webpage:latest .'
             }
-        }
-
-        stage('Stop and Remove Existing Container') {
-            steps {
-                script {
-                    echo "🛑 Stopping and removing container: 72ad98"
-                    sh """
-                        if [ \$(docker ps -q -f name=72ad98) ]; then
-                            docker stop $CONTAINER_NAME
-                        fi
-                        if [ \$(docker ps -aq -f name=72ad98) ]; then
-                            docker rm 72ad98
-                        fi
-                    """
-                }
-            }
-        }
-
-        stage('Run New Container') {
-            steps {
-                script {
-                    echo "🚀 Running new container on port 9094"
-                    sh "docker run -d -p $PORT:80 --name 72ad98 my-webpage"
-                }
-            }
-        }
-    }
-
-    post {
-        failure {
-            echo '❌ Deployment failed.'
-        }
-        success {
-            echo "✅ Static website is now running at http://localhost:9094"
         }
     }
 }
+
