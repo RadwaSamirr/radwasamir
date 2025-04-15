@@ -2,32 +2,33 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = 'flaskapp'
-        TAG = 'latest'
+        IMAGE_NAME = 'radwa-static-site'
+        CONTAINER_NAME = 'radwa-static-container'
+        PORT = '9094'
     }
 
     stages {
-        stage('Clone Repo') {
+        stage('Clone Repository') {
             steps {
-                git 'https://github.com/YourUsername/YourRepo.git'
+                git 'https://github.com/RadwaSamirr/radwasamir.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh 'docker build -t $IMAGE_NAME:$TAG .'
+                    sh 'docker build -t $IMAGE_NAME .'
                 }
             }
         }
 
-        stage('Run Docker Container') {
+        stage('Run Container') {
             steps {
                 script {
-                    // Stop and remove any old container if it exists
+                    // Stop and remove the old container if it exists
                     sh '''
-                    docker rm -f flask_container || true
-                    docker run -d -p 5000:5000 --name flask_container $IMAGE_NAME:$TAG
+                    docker rm -f $CONTAINER_NAME || true
+                    docker run -d -p $PORT:80 --name $CONTAINER_NAME $IMAGE_NAME
                     '''
                 }
             }
@@ -36,10 +37,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ App built and running!'
+            echo "✅ Website deployed at http://<your-server-ip>:$PORT"
         }
         failure {
-            echo '❌ Something went wrong.'
+            echo "❌ Build or deploy failed."
         }
     }
 }
