@@ -2,40 +2,52 @@ pipeline {
     agent any
 
     environment {
-        VERSION = "v${new Date().format('yyyyMMddHHmmss')}"
+        IMAGE_NAME = 'rps-app'
+        IMAGE_VERSION = "v${BUILD_NUMBER}"
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('Clone Repo') {
             steps {
                 git 'https://github.com/RadwaSamirr/radwasamir.git'
             }
         }
 
-        stage('Build Image') {
+        stage('Build Docker Image') {
             steps {
                 script {
-                    sh "docker build -t flask-swagger-app:${VERSION} ."
-                    sh "docker tag flask-swagger-app:${VERSION} flask-swagger-app:latest"
-                    sh "docker save flask-swagger-app:${VERSION} -o images/flask-swagger-app-${VERSION}.tar"
+                    sh 'mkdir -p docker_images'
+                    sh "docker build -t ${IMAGE_NAME}:${IMAGE_VERSION} ."
+                    sh "docker save ${IMAGE_NAME}:${IMAGE_VERSION} -o docker_images/${IMAGE_NAME}_${IMAGE_VERSION}.tar"
+                }
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                script {
+                    // Placeholder for future tests
+                    echo 'Tests would go here!'
                 }
             }
         }
 
         stage('Deploy') {
             steps {
-                sh "docker-compose down"
-                sh "docker-compose up -d"
+                script {
+                    sh 'docker-compose down'
+                    sh "IMAGE_VERSION=${IMAGE_VERSION} docker-compose up -d --build"
+                }
             }
         }
     }
 
     post {
         success {
-            slackSend(channel: '#deployments', message: "✅ Deployment Success: ${VERSION}")
+            echo "✅ Deployment succeeded with version ${IMAGE_VERSION}"
         }
         failure {
-            slackSend(channel: '#deployments', message: "❌ Deployment Failed!")
+            echo "❌ Deployment failed"
         }
     }
 }
