@@ -2,23 +2,40 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = 'rps-app'
-        IMAGE_VERSION = "v${BUILD_NUMBER}"
+        IMAGE_TAG = "v${env.BUILD_NUMBER}"
+        PROJECT_NAME = "radwasamir"
+        APP_PORT = "2222"  // Your specified port
+        SLACK_CHANNEL = "#deployments"  // Update with your channel
     }
 
     stages {
-        stage('Clone Repo') {
+        stage('Checkout SCM') {
             steps {
-                git branch: 'main', url: 'https://github.com/RadwaSamirr/radwasamir.git'
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    userRemoteConfigs: [[url: 'https://github.com/RadwaSamirr/radwasamir.git']]
+                ])
+                script {
+                    COMMIT_HASH = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                    echo "Building commit ${COMMIT_HASH}"
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh 'mkdir -p docker_images'
-                    sh "docker build -t ${IMAGE_NAME}:${IMAGE_VERSION} ."
-                    sh "docker save ${IMAGE_NAME}:${IMAGE_VERSION} -o docker_images/${IMAGE_NAME}_${IMAGE_VERSION}.tar"
+                    // Verify necessary files exist
+                    if (!fileExists('Dockerfile')) {
+                        error("Dockerfile not found in repository root")
+                    }
+                    
+                    // Build with version tag
+                    dockerImage = docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
+                    
+                    // Save image to filesystem
+                    sh "docker save -o ${WORKSPACE}/docker_images/${PROJECT_NAME}-${IMAGE_TAG}.tar ${PROJECT_NAME}:${IMAGE_TAG}"
                 }
             }
         }
@@ -26,8 +43,18 @@ pipeline {
         stage('Run Tests') {
             steps {
                 script {
-                    // Placeholder for future tests
-                    echo 'Tests would go here!'
+                    // Simple test - verify container starts
+                    try {
+                        sh """
+                        docker run -d --name test-container -p ${APP_PORT}:80 ${PROJECT_NAME}:${IMAGE_TAG}
+                        sleep 5
+                        curl -I http://localhost:${APP_PORT}
+                        docker stop test-container
+                        docker rm test-container
+                        """
+                    } catch (err) {
+                        error("Tests failed: ${err}")
+                    }
                 }
             }
         }
@@ -35,19 +62,41 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    sh 'docker-compose down'
-                    sh "IMAGE_VERSION=${IMAGE_VERSION} docker-compose up -d --build"
+                    // Stop and remove old containers
+                    sh "docker-compose -f ${WORKSPACE}/docker-compose.yml down || true"
+                    
+                    // Update compose file with new image
+                    sh "sed -i 's/image: ${PROJECT_NAME}:.*/image: ${PROJECT_NAME}:${IMAGE_TAG}/' ${WORKSPACE}/docker-compose.yml"
+                    
+                    // Start new containers
+                    sh "docker-compose -f ${WORKSPACE}/docker-compose.yml up -d"
+                    
+                    // Verify deployment
+                    sh "sleep 10"  // Wait for containers to start
+                    sh "curl -I http://localhost:${APP_PORT} || true"
                 }
             }
         }
     }
 
     post {
+        always {
+            // Clean up workspace
+            cleanWs()
+        }
         success {
-            echo "✅ Deployment succeeded with version ${IMAGE_VERSION}"
+            slackSend(
+                channel: SLACK_CHANNEL,
+                color: 'good',
+                message: "✅ Successfully deployed ${PROJECT_NAME}:${IMAGE_TAG} on port ${APP_PORT}\n(<${env.BUILD_URL}|View Build>)"
+            )
         }
         failure {
-            echo "❌ Deployment failed"
+            slackSend(
+                channel: SLACK_CHANNEL,
+                color: 'danger',
+                message: "❌ Deployment failed for ${PROJECT_NAME} build ${env.BUILD_NUMBER}\n(<${env.BUILD_URL}|View Build>)"
+            )
         }
     }
 }
