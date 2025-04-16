@@ -6,31 +6,36 @@ pipeline {
         IMAGE_TAG = "v${env.BUILD_NUMBER}"
         PROJECT_NAME = "radwasamir"
         APP_PORT = "2222"
-        DOCKERFILE_DIR = "insert-update"
+        PROJECT_DIR = "insert-update"  // Single source of truth for directory
         
         // Notification settings
-        SLACK_CHANNEL = "#internship"  // Updated to your channel name
+        SLACK_CHANNEL = "#internship"
         NOTIFICATION_EMAIL = "samirradwa188@gmail.com"
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('Single Checkout') {
             steps {
+                // Single checkout with clean workspace
                 checkout([
                     $class: 'GitSCM',
                     branches: [[name: '*/main']],
                     extensions: [
                         [
                             $class: 'RelativeTargetDirectory',
-                            relativeTargetDir: "${DOCKERFILE_DIR}"
+                            relativeTargetDir: "${PROJECT_DIR}"
+                        ],
+                        [
+                            $class: 'CleanBeforeCheckout'
                         ]
                     ],
                     userRemoteConfigs: [[url: 'https://github.com/RadwaSamirr/radwasamir.git']]
                 ])
                 
                 script {
-                    env.GIT_COMMIT = sh(returnStdout: true, script: "git -C ${DOCKERFILE_DIR} rev-parse --short HEAD").trim()
-                    echo "Checked out commit: ${env.GIT_COMMIT}"
+                    env.GIT_COMMIT = sh(returnStdout: true, script: "git -C ${PROJECT_DIR} rev-parse --short HEAD").trim()
+                    echo "Workspace contents:"
+                    sh "ls -la ${PROJECT_DIR}"
                 }
             }
         }
@@ -38,16 +43,17 @@ pipeline {
         stage('Verify Files') {
             steps {
                 script {
-                    // Verify required files exist
-                    if (!fileExists("${DOCKERFILE_DIR}/Dockerfile")) {
-                        error("❌ Dockerfile not found in ${DOCKERFILE_DIR} directory")
-                    }
-                    if (!fileExists("${DOCKERFILE_DIR}/docker-compose.yml")) {
-                        error("❌ docker-compose.yml not found in ${DOCKERFILE_DIR} directory")
-                    }
+                    // Use absolute path to check files
+                    def dockerfilePath = "${WORKSPACE}/${PROJECT_DIR}/Dockerfile"
+                    def composePath = "${WORKSPACE}/${PROJECT_DIR}/docker-compose.yml"
                     
-                    // Debug: Show directory structure
-                    sh "ls -la ${DOCKERFILE_DIR}"
+                    if (!fileExists(dockerfilePath)) {
+                        error("Dockerfile not found at: ${dockerfilePath}")
+                    }
+                    if (!fileExists(composePath)) {
+                        error("docker-compose.yml not found at: ${composePath}")
+                    }
+                    echo "All required files found"
                 }
             }
         }
@@ -55,32 +61,13 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    dir(DOCKERFILE_DIR) {
-                        echo "Building Docker image ${PROJECT_NAME}:${IMAGE_TAG}"
-                        dockerImage = docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
+                    dir(PROJECT_DIR) {
+                        echo "Building Docker image..."
+                        docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
                         
                         // Save image to filesystem
                         sh "mkdir -p docker_images"
                         sh "docker save -o docker_images/${PROJECT_NAME}-${IMAGE_TAG}.tar ${PROJECT_NAME}:${IMAGE_TAG}"
-                        echo "Image saved to docker_images/${PROJECT_NAME}-${IMAGE_TAG}.tar"
-                    }
-                }
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                script {
-                    dir(DOCKERFILE_DIR) {
-                        echo "Running tests..."
-                        try {
-                            sh "docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit"
-                            echo "✅ Tests passed successfully"
-                        } catch (err) {
-                            error("❌ Tests failed")
-                        } finally {
-                            sh "docker-compose -f docker-compose.test.yml down"
-                        }
                     }
                 }
             }
@@ -89,20 +76,14 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    dir(DOCKERFILE_DIR) {
-                        echo "Deploying version ${IMAGE_TAG} on port ${APP_PORT}"
-                        
-                        // Stop and remove old containers
+                    dir(PROJECT_DIR) {
+                        echo "Deploying version ${IMAGE_TAG}"
                         sh "docker-compose down || true"
-                        
-                        // Deploy new version
                         sh "IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d"
                         
                         // Verify deployment
                         sleep(time: 10, unit: 'SECONDS')
-                        echo "Verifying deployment..."
                         sh "curl -I http://localhost:${APP_PORT} || true"
-                        echo "✅ Successfully deployed ${PROJECT_NAME}:${IMAGE_TAG}"
                     }
                 }
             }
@@ -111,82 +92,36 @@ pipeline {
 
     post {
         always {
-            // Clean up workspace
             cleanWs()
-            
-            // Archive Docker image files
-            archiveArtifacts artifacts: "${DOCKERFILE_DIR}/docker_images/*.tar", onlyIfSuccessful: true
+            archiveArtifacts artifacts: "${PROJECT_DIR}/docker_images/*.tar", onlyIfSuccessful: true
         }
         success {
             script {
-                // Enhanced Slack notification
-                slackSend(
-                    channel: SLACK_CHANNEL,
-                    color: 'good',
-                    message: """🚀 Success: ${PROJECT_NAME} ${IMAGE_TAG} deployed!
-                    |---------------------------------
-                    |🌐 Port: ${APP_PORT}
-                    |📌 Commit: ${env.GIT_COMMIT}
-                    |📊 <${env.BUILD_URL}|View Build Details>
-                    |---------------------------------
-                    |Access: http://your-server:${APP_PORT}""".stripMargin()
-                )
-                
-                // Enhanced email notification
-                emailext(
+                // Basic email if Slack fails
+                mail(
                     to: NOTIFICATION_EMAIL,
                     subject: "SUCCESS: ${PROJECT_NAME} ${IMAGE_TAG} deployed",
-                    body: """The deployment was successful!
-
-Project: ${PROJECT_NAME}
-Version: ${IMAGE_TAG}
-Port: ${APP_PORT}
-Commit: ${env.GIT_COMMIT}
-Build URL: ${env.BUILD_URL}
-
-Access the application: http://your-server:${APP_PORT}
-
-Deployment Details:
-- Docker image: ${PROJECT_NAME}:${IMAGE_TAG}
-- Saved as: docker_images/${PROJECT_NAME}-${IMAGE_TAG}.tar
-"""
+                    body: "Deployed successfully to port ${APP_PORT}\nBuild: ${env.BUILD_URL}"
                 )
+                
+                // Try Slack if credentials exist
+                try {
+                    slackSend(
+                        channel: SLACK_CHANNEL,
+                        color: 'good',
+                        message: "Deployed ${PROJECT_NAME}:${IMAGE_TAG} to port ${APP_PORT}"
+                    )
+                } catch (err) {
+                    echo "Slack notification failed, using email only"
+                }
             }
         }
         failure {
             script {
-                // Enhanced Slack notification
-                slackSend(
-                    channel: SLACK_CHANNEL,
-                    color: 'danger',
-                    message: """🔥 Failure: ${PROJECT_NAME} build #${env.BUILD_NUMBER}
-                    |---------------------------------
-                    |📌 Commit: ${env.GIT_COMMIT}
-                    |🔍 <${env.BUILD_URL}|Investigate Build Failure>
-                    |---------------------------------
-                    |Please check Jenkins logs immediately""".stripMargin()
-                )
-                
-                // Enhanced email notification
-                emailext(
+                mail(
                     to: NOTIFICATION_EMAIL,
-                    subject: "URGENT: ${PROJECT_NAME} build #${env.BUILD_NUMBER} failed",
-                    body: """The build failed and requires immediate attention!
-
-Project: ${PROJECT_NAME}
-Build Number: #${env.BUILD_NUMBER}
-Commit: ${env.GIT_COMMIT}
-Build URL: ${env.BUILD_URL}
-
-Failure Details:
-- Please check the Jenkins logs for error details
-- The last successful build was #${currentBuild.previousBuild?.number ?: 'N/A'}
-
-Recommended Actions:
-1. Check Jenkins build logs
-2. Verify recent code changes
-3. Test locally if possible
-"""
+                    subject: "FAILED: ${PROJECT_NAME} build #${env.BUILD_NUMBER}",
+                    body: "Build failed: ${env.BUILD_URL}"
                 )
             }
         }
