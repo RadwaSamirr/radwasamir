@@ -6,7 +6,6 @@ pipeline {
         PROJECT_NAME = "radwasamir"
         APP_PORT = "2222"
         SLACK_EMAIL = "samirradwa188@gmail.com"
-        WORKSPACE_PATH = "${WORKSPACE}/insert-update"  // Adjusted workspace path
     }
 
     stages {
@@ -24,7 +23,24 @@ pipeline {
                     userRemoteConfigs: [[url: 'https://github.com/RadwaSamirr/radwasamir.git']]
                 ])
                 script {
-                    COMMIT_HASH = sh(returnStdout: true, script: 'git -C insert-update rev-parse --short HEAD').trim()
+                    def commit = sh(returnStdout: true, script: 'git -C insert-update rev-parse --short HEAD').trim()
+                    env.COMMIT_HASH = commit
+                }
+            }
+        }
+
+        stage('Verify Files') {
+            steps {
+                script {
+                    dir('insert-update') {
+                        if (!fileExists('Dockerfile')) {
+                            error("ERROR: Dockerfile not found in insert-update directory")
+                        }
+                        if (!fileExists('docker-compose.yml')) {
+                            error("ERROR: docker-compose.yml not found in insert-update directory")
+                        }
+                        sh 'ls -la'  // Debug: List files for verification
+                    }
                 }
             }
         }
@@ -33,9 +49,6 @@ pipeline {
             steps {
                 script {
                     dir('insert-update') {
-                        if (!fileExists('Dockerfile')) {
-                            error("Dockerfile not found in insert-update directory")
-                        }
                         docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
                     }
                 }
@@ -68,28 +81,32 @@ pipeline {
             cleanWs()
         }
         success {
-            emailext(
-                to: "${SLACK_EMAIL}",
-                subject: "SUCCESS: ${PROJECT_NAME} deployed on port ${APP_PORT}",
-                body: """
-                Deployment successful!
-                Project: ${PROJECT_NAME}:${IMAGE_TAG}
-                Running on: http://localhost:${APP_PORT}
-                Commit: ${COMMIT_HASH}
-                Build URL: ${env.BUILD_URL}
-                """
-            )
+            script {
+                mail(
+                    to: "${SLACK_EMAIL}",
+                    subject: "SUCCESS: ${PROJECT_NAME} deployed",
+                    body: """
+                    Deployment successful!
+                    Image: ${PROJECT_NAME}:${IMAGE_TAG}
+                    Port: ${APP_PORT}
+                    Commit: ${env.COMMIT_HASH}
+                    Build URL: ${env.BUILD_URL}
+                    """
+                )
+            }
         }
         failure {
-            emailext(
-                to: "${SLACK_EMAIL}",
-                subject: "FAILED: ${PROJECT_NAME} build #${env.BUILD_NUMBER}",
-                body: """
-                Build failed for ${PROJECT_NAME}
-                Build URL: ${env.BUILD_URL}
-                Please check the Jenkins logs for details.
-                """
-            )
+            script {
+                mail(
+                    to: "${SLACK_EMAIL}",
+                    subject: "FAILED: ${PROJECT_NAME} build",
+                    body: """
+                    Build failed!
+                    Project: ${PROJECT_NAME}
+                    Build URL: ${env.BUILD_URL}
+                    """
+                )
+            }
         }
     }
 }
