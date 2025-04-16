@@ -102,4 +102,20 @@ pipeline {
             """
         }
     }
+    post {
+    success {
+        slackSend(
+            channel: "#project",
+            color: "good",
+            message: "✅ Success! Deployed ${PROJECT_NAME}:${IMAGE_TAG} on port ${APP_PORT}\n<${env.BUILD_URL}|View Build>"
+        )
+    }
+    failure {
+        slackSend(
+            channel: "#project",
+            color: "danger",
+            message: "❌ Failed! Check <${env.BUILD_URL}|build logs>"
+        )
+    }
+}
 }
