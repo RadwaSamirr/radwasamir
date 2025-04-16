@@ -5,7 +5,7 @@ pipeline {
         IMAGE_TAG = "v${env.BUILD_NUMBER}"
         PROJECT_NAME = "radwasamir"
         APP_PORT = "2222"
-        SLACK_CHANNEL = "#internship"  // Your Slack channel
+        SLACK_CHANNEL = "#project"  // Your Slack channel
     }
 
     stages {
