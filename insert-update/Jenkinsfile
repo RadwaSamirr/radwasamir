@@ -8,39 +8,17 @@ pipeline {
     }
 
     stages {
-        stage('Single Checkout') {
+        stage('Checkout') {
             steps {
-                // Single checkout with subdirectory
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    extensions: [
-                        [
-                            $class: 'RelativeTargetDirectory',
-                            relativeTargetDir: 'insert-update'
-                        ],
-                        [
-                            $class: 'SparseCheckoutPaths',
-                            sparseCheckoutPaths: [[path: 'insert-update']]
-                        ]
-                    ],
-                    userRemoteConfigs: [[url: 'https://github.com/RadwaSamirr/radwasamir.git']]
-                ])
-                
-                // Debug: Show exactly what was checked out
-                sh 'ls -laR insert-update'
+                checkout scm
             }
         }
 
-        stage('Verify Dockerfile') {
+        stage('Verify Files') {
             steps {
                 script {
-                    // Use absolute path to check
-                    def dockerfilePath = "${WORKSPACE}/insert-update/Dockerfile"
-                    if (!fileExists(dockerfilePath)) {
-                        error("Dockerfile not found at: ${dockerfilePath}")
-                    } else {
-                        echo "Found Dockerfile at: ${dockerfilePath}"
+                    if (!fileExists('insert-update/Dockerfile')) {
+                        error("Dockerfile not found in insert-update directory")
                     }
                 }
             }
@@ -48,14 +26,23 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                dir('insert-update') {
-                    sh 'ls -la' // Debug
-                    docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
+                script {
+                    // Must wrap docker.build in a script block
+                    docker.build("${PROJECT_NAME}:${IMAGE_TAG}", "insert-update")
                 }
             }
         }
 
-        // ... rest of your stages ...
+        stage('Deploy') {
+            steps {
+                script {
+                    dir('insert-update') {
+                        sh "docker-compose down || true"
+                        sh "IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d"
+                    }
+                }
+            }
+        }
     }
 
     post {
