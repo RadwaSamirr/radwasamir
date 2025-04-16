@@ -5,7 +5,7 @@ pipeline {
         IMAGE_TAG = "v${env.BUILD_NUMBER}"
         PROJECT_NAME = "radwasamir"
         APP_PORT = "2222"
-        SLACK_CHANNEL = "#project"  // Your Slack channel
+        SLACK_CHANNEL = "#project"  // Using your specified channel
     }
 
     stages {
@@ -18,12 +18,9 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 checkout scm
-                
                 script {
-                    echo "Repository structure:"
-                    sh "ls -la"
-                    echo "insert-update contents:"
-                    sh "ls -la insert-update || true"
+                    echo "Verified repository structure:"
+                    sh "ls -la insert-update/"
                 }
             }
         }
@@ -32,15 +29,10 @@ pipeline {
             steps {
                 script {
                     if (!fileExists("insert-update/Dockerfile")) {
-                        error("""
-                        ❌ Missing Dockerfile!
-                        insert-update contents:
-                        ${sh(script: "ls -la insert-update", returnStdout: true)}
-                        """)
+                        error("❌ Dockerfile missing in insert-update/")
                     }
-                    
                     if (!fileExists("insert-update/docker-compose.yml")) {
-                        error("❌ Missing docker-compose.yml in insert-update")
+                        error("❌ docker-compose.yml missing in insert-update/")
                     }
                 }
             }
@@ -60,20 +52,39 @@ pipeline {
             steps {
                 script {
                     dir("insert-update") {
+                        // Stop and clean previous deployment
+                        sh "docker-compose down --remove-orphans || true"
+                        
+                        // Start new containers with 30s timeout
                         sh """
-                        docker-compose down || true
-                        IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d
+                        IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} \
+                        docker-compose up -d --build --force-recreate
                         """
                         
-                        // Enhanced health check
-                        def health = sh(
-                            script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:${APP_PORT} || echo '000'",
-                            returnStdout: true
-                        ).trim()
-                        echo "Health check HTTP status: ${health}"
+                        // Extended health check with retries
+                        def healthy = false
+                        def retries = 3
+                        def waitTime = 10
                         
-                        if (health != "200") {
-                            error("Deployment health check failed (Status: ${health})")
+                        while (retries > 0 && !healthy) {
+                            sleep(time: waitTime, unit: 'SECONDS')
+                            def status = sh(
+                                script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:${APP_PORT} || echo '000'",
+                                returnStdout: true
+                            ).trim()
+                            
+                            if (status == "200") {
+                                healthy = true
+                                echo "✅ Health check passed (Status: 200)"
+                            } else {
+                                retries--
+                                echo "⚠️ Health check failed (Status: ${status}), ${retries} retries left"
+                                sh "docker-compose logs --tail=20 || true"
+                            }
+                        }
+                        
+                        if (!healthy) {
+                            error("❌ Application failed to start after multiple retries")
                         }
                     }
                 }
@@ -84,43 +95,40 @@ pipeline {
     post {
         always {
             cleanWs()
+            script {
+                // Archive logs if build failed
+                if (currentBuild.result == 'FAILURE') {
+                    dir("insert-update") {
+                        sh "docker-compose logs --no-color > docker_logs.txt || true"
+                        archiveArtifacts artifacts: 'docker_logs.txt', allowEmptyArchive: true
+                    }
+                }
+            }
         }
         success {
             script {
-                echo """
-                🎉 Successfully deployed ${PROJECT_NAME}:${IMAGE_TAG}
-                Access URL: http://your-server:${APP_PORT}
-                """
-                
-                // Slack notification
+                def commitHash = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
                 slackSend(
                     channel: env.SLACK_CHANNEL,
                     color: "good",
-                    message: """✅ Deployment Success!
-                    |Project: ${PROJECT_NAME}:${IMAGE_TAG}
-                    |Port: ${APP_PORT}
-                    |Commit: ${sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()}
-                    |<${env.BUILD_URL}|View Build>""".stripMargin()
+                    message: """✅ Deployment Successful!
+                    |*Project*: ${PROJECT_NAME}:${IMAGE_TAG}
+                    |*Commit*: ${commitHash}
+                    |*Port*: ${APP_PORT}
+                    |*Access*: http://your-server:${APP_PORT}
+                    |<${env.BUILD_URL}|View Build Details>""".stripMargin()
                 )
             }
         }
         failure {
             script {
-                echo """
-                ❌ Deployment failed!
-                Troubleshooting:
-                1. Check Dockerfile in insert-update/
-                2. Verify docker-compose.yml
-                3. Inspect logs: ${env.BUILD_URL}
-                """
-                
-                // Slack notification
                 slackSend(
                     channel: env.SLACK_CHANNEL,
                     color: "danger",
                     message: """❌ Deployment Failed!
-                    |Project: ${PROJECT_NAME}
-                    |Build: #${env.BUILD_NUMBER}
+                    |*Project*: ${PROJECT_NAME}
+                    |*Build*: #${env.BUILD_NUMBER}
+                    |*Logs*: <${env.BUILD_URL}/artifact/docker_logs.txt|Download>
                     |<${env.BUILD_URL}|Investigate>""".stripMargin()
                 )
             }
