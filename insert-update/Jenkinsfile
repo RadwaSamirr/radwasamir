@@ -2,40 +2,28 @@ pipeline {
     agent any
 
     environment {
-        // Configuration
         IMAGE_TAG = "v${env.BUILD_NUMBER}"
         PROJECT_NAME = "radwasamir"
         APP_PORT = "2222"
-        PROJECT_DIR = "insert-update"  // Single source of truth for directory
-        
-        // Notification settings
-        SLACK_CHANNEL = "#internship"
-        NOTIFICATION_EMAIL = "samirradwa188@gmail.com"
     }
 
     stages {
-        stage('Single Checkout') {
+        stage('Clean Workspace') {
             steps {
-                // Single checkout with clean workspace
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    extensions: [
-                        [
-                            $class: 'RelativeTargetDirectory',
-                            relativeTargetDir: "${PROJECT_DIR}"
-                        ],
-                        [
-                            $class: 'CleanBeforeCheckout'
-                        ]
-                    ],
-                    userRemoteConfigs: [[url: 'https://github.com/RadwaSamirr/radwasamir.git']]
-                ])
+                cleanWs()
+            }
+        }
+
+        stage('Checkout Code') {
+            steps {
+                checkout scm
                 
                 script {
-                    env.GIT_COMMIT = sh(returnStdout: true, script: "git -C ${PROJECT_DIR} rev-parse --short HEAD").trim()
-                    echo "Workspace contents:"
-                    sh "ls -la ${PROJECT_DIR}"
+                    // Debug: Show exact repository structure
+                    echo "Repository contents:"
+                    sh "ls -la"
+                    echo "insert-update contents:"
+                    sh "ls -la insert-update || true"
                 }
             }
         }
@@ -43,17 +31,18 @@ pipeline {
         stage('Verify Files') {
             steps {
                 script {
-                    // Use absolute path to check files
-                    def dockerfilePath = "${WORKSPACE}/${PROJECT_DIR}/Dockerfile"
-                    def composePath = "${WORKSPACE}/${PROJECT_DIR}/docker-compose.yml"
+                    // Check files using exact paths
+                    if (!fileExists("insert-update/Dockerfile")) {
+                        error("""
+                        ❌ Dockerfile not found!
+                        insert-update directory contents:
+                        ${sh(script: "ls -la insert-update", returnStdout: true)}
+                        """)
+                    }
                     
-                    if (!fileExists(dockerfilePath)) {
-                        error("Dockerfile not found at: ${dockerfilePath}")
+                    if (!fileExists("insert-update/docker-compose.yml")) {
+                        error("docker-compose.yml not found in insert-update")
                     }
-                    if (!fileExists(composePath)) {
-                        error("docker-compose.yml not found at: ${composePath}")
-                    }
-                    echo "All required files found"
                 }
             }
         }
@@ -61,29 +50,31 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    dir(PROJECT_DIR) {
-                        echo "Building Docker image..."
+                    dir("insert-update") {
+                        // Build and tag the image
                         docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
-                        
-                        // Save image to filesystem
-                        sh "mkdir -p docker_images"
-                        sh "docker save -o docker_images/${PROJECT_NAME}-${IMAGE_TAG}.tar ${PROJECT_NAME}:${IMAGE_TAG}"
                     }
                 }
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy Application') {
             steps {
                 script {
-                    dir(PROJECT_DIR) {
-                        echo "Deploying version ${IMAGE_TAG}"
-                        sh "docker-compose down || true"
-                        sh "IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d"
+                    dir("insert-update") {
+                        // Stop old containers and deploy new version
+                        sh """
+                        docker-compose down || true
+                        IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d
+                        """
                         
                         // Verify deployment
                         sleep(time: 10, unit: 'SECONDS')
-                        sh "curl -I http://localhost:${APP_PORT} || true"
+                        def status = sh(
+                            script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:${APP_PORT} || true",
+                            returnStdout: true
+                        ).trim()
+                        echo "Application status check returned HTTP ${status}"
                     }
                 }
             }
@@ -93,37 +84,22 @@ pipeline {
     post {
         always {
             cleanWs()
-            archiveArtifacts artifacts: "${PROJECT_DIR}/docker_images/*.tar", onlyIfSuccessful: true
         }
         success {
-            script {
-                // Basic email if Slack fails
-                mail(
-                    to: NOTIFICATION_EMAIL,
-                    subject: "SUCCESS: ${PROJECT_NAME} ${IMAGE_TAG} deployed",
-                    body: "Deployed successfully to port ${APP_PORT}\nBuild: ${env.BUILD_URL}"
-                )
-                
-                // Try Slack if credentials exist
-                try {
-                    slackSend(
-                        channel: SLACK_CHANNEL,
-                        color: 'good',
-                        message: "Deployed ${PROJECT_NAME}:${IMAGE_TAG} to port ${APP_PORT}"
-                    )
-                } catch (err) {
-                    echo "Slack notification failed, using email only"
-                }
-            }
+            echo """
+            🎉 Successfully deployed ${PROJECT_NAME}:${IMAGE_TAG}
+            Website running on port ${APP_PORT}
+            Build details: ${env.BUILD_URL}
+            """
         }
         failure {
-            script {
-                mail(
-                    to: NOTIFICATION_EMAIL,
-                    subject: "FAILED: ${PROJECT_NAME} build #${env.BUILD_NUMBER}",
-                    body: "Build failed: ${env.BUILD_URL}"
-                )
-            }
+            echo """
+            ❌ Deployment failed!
+            Troubleshooting steps:
+            1. Check Dockerfile exists in insert-update/
+            2. Verify docker-compose.yml is configured
+            3. Check logs at ${env.BUILD_URL}
+            """
         }
     }
 }
