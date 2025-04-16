@@ -4,8 +4,9 @@ pipeline {
     environment {
         IMAGE_TAG = "v${env.BUILD_NUMBER}"
         PROJECT_NAME = "radwasamir"
-        APP_PORT = "2222"  // Your specified port
-        SLACK_CHANNEL = "#deployments"  // Update with your channel
+        APP_PORT = "2222"
+        SLACK_EMAIL = "samirradwa188@gmail.com"
+        WORKSPACE_PATH = "${WORKSPACE}/insert-update"  // Adjusted workspace path
     }
 
     stages {
@@ -14,11 +15,16 @@ pipeline {
                 checkout([
                     $class: 'GitSCM',
                     branches: [[name: '*/main']],
+                    extensions: [
+                        [
+                            $class: 'RelativeTargetDirectory',
+                            relativeTargetDir: 'insert-update'
+                        ]
+                    ],
                     userRemoteConfigs: [[url: 'https://github.com/RadwaSamirr/radwasamir.git']]
                 ])
                 script {
-                    COMMIT_HASH = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
-                    echo "Building commit ${COMMIT_HASH}"
+                    COMMIT_HASH = sh(returnStdout: true, script: 'git -C insert-update rev-parse --short HEAD').trim()
                 }
             }
         }
@@ -26,34 +32,11 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Verify necessary files exist
-                    if (!fileExists('Dockerfile')) {
-                        error("Dockerfile not found in repository root")
-                    }
-                    
-                    // Build with version tag
-                    dockerImage = docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
-                    
-                    // Save image to filesystem
-                    sh "docker save -o ${WORKSPACE}/docker_images/${PROJECT_NAME}-${IMAGE_TAG}.tar ${PROJECT_NAME}:${IMAGE_TAG}"
-                }
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                script {
-                    // Simple test - verify container starts
-                    try {
-                        sh """
-                        docker run -d --name test-container -p ${APP_PORT}:80 ${PROJECT_NAME}:${IMAGE_TAG}
-                        sleep 5
-                        curl -I http://localhost:${APP_PORT}
-                        docker stop test-container
-                        docker rm test-container
-                        """
-                    } catch (err) {
-                        error("Tests failed: ${err}")
+                    dir('insert-update') {
+                        if (!fileExists('Dockerfile')) {
+                            error("Dockerfile not found in insert-update directory")
+                        }
+                        docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
                     }
                 }
             }
@@ -62,17 +45,18 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    // Stop and remove old containers
-                    sh "docker-compose -f ${WORKSPACE}/docker-compose.yml down || true"
-                    
-                    // Update compose file with new image
-                    sh "sed -i 's/image: ${PROJECT_NAME}:.*/image: ${PROJECT_NAME}:${IMAGE_TAG}/' ${WORKSPACE}/docker-compose.yml"
-                    
-                    // Start new containers
-                    sh "docker-compose -f ${WORKSPACE}/docker-compose.yml up -d"
-                    
-                    // Verify deployment
-                    sh "sleep 10"  // Wait for containers to start
+                    dir('insert-update') {
+                        sh "docker-compose down || true"
+                        sh "IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d"
+                    }
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    sleep(time: 10, unit: 'SECONDS')
                     sh "curl -I http://localhost:${APP_PORT} || true"
                 }
             }
@@ -81,21 +65,30 @@ pipeline {
 
     post {
         always {
-            // Clean up workspace
             cleanWs()
         }
         success {
-            slackSend(
-                channel: SLACK_CHANNEL,
-                color: 'good',
-                message: "✅ Successfully deployed ${PROJECT_NAME}:${IMAGE_TAG} on port ${APP_PORT}\n(<${env.BUILD_URL}|View Build>)"
+            emailext(
+                to: "${SLACK_EMAIL}",
+                subject: "SUCCESS: ${PROJECT_NAME} deployed on port ${APP_PORT}",
+                body: """
+                Deployment successful!
+                Project: ${PROJECT_NAME}:${IMAGE_TAG}
+                Running on: http://localhost:${APP_PORT}
+                Commit: ${COMMIT_HASH}
+                Build URL: ${env.BUILD_URL}
+                """
             )
         }
         failure {
-            slackSend(
-                channel: SLACK_CHANNEL,
-                color: 'danger',
-                message: "❌ Deployment failed for ${PROJECT_NAME} build ${env.BUILD_NUMBER}\n(<${env.BUILD_URL}|View Build>)"
+            emailext(
+                to: "${SLACK_EMAIL}",
+                subject: "FAILED: ${PROJECT_NAME} build #${env.BUILD_NUMBER}",
+                body: """
+                Build failed for ${PROJECT_NAME}
+                Build URL: ${env.BUILD_URL}
+                Please check the Jenkins logs for details.
+                """
             )
         }
     }
