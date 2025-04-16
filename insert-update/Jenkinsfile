@@ -5,12 +5,12 @@ pipeline {
         IMAGE_TAG = "v${env.BUILD_NUMBER}"
         PROJECT_NAME = "radwasamir"
         APP_PORT = "2222"
-        SLACK_EMAIL = "samirradwa188@gmail.com"
     }
 
     stages {
-        stage('Checkout SCM') {
+        stage('Single Checkout') {
             steps {
+                // Single checkout with subdirectory
                 checkout([
                     $class: 'GitSCM',
                     branches: [[name: '*/main']],
@@ -18,28 +18,29 @@ pipeline {
                         [
                             $class: 'RelativeTargetDirectory',
                             relativeTargetDir: 'insert-update'
+                        ],
+                        [
+                            $class: 'SparseCheckoutPaths',
+                            sparseCheckoutPaths: [[path: 'insert-update']]
                         ]
                     ],
                     userRemoteConfigs: [[url: 'https://github.com/RadwaSamirr/radwasamir.git']]
                 ])
-                script {
-                    def commit = sh(returnStdout: true, script: 'git -C insert-update rev-parse --short HEAD').trim()
-                    env.COMMIT_HASH = commit
-                }
+                
+                // Debug: Show exactly what was checked out
+                sh 'ls -laR insert-update'
             }
         }
 
-        stage('Verify Files') {
+        stage('Verify Dockerfile') {
             steps {
                 script {
-                    dir('insert-update') {
-                        if (!fileExists('Dockerfile')) {
-                            error("ERROR: Dockerfile not found in insert-update directory")
-                        }
-                        if (!fileExists('docker-compose.yml')) {
-                            error("ERROR: docker-compose.yml not found in insert-update directory")
-                        }
-                        sh 'ls -la'  // Debug: List files for verification
+                    // Use absolute path to check
+                    def dockerfilePath = "${WORKSPACE}/insert-update/Dockerfile"
+                    if (!fileExists(dockerfilePath)) {
+                        error("Dockerfile not found at: ${dockerfilePath}")
+                    } else {
+                        echo "Found Dockerfile at: ${dockerfilePath}"
                     }
                 }
             }
@@ -47,66 +48,19 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    dir('insert-update') {
-                        docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
-                    }
+                dir('insert-update') {
+                    sh 'ls -la' // Debug
+                    docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
                 }
             }
         }
 
-        stage('Deploy') {
-            steps {
-                script {
-                    dir('insert-update') {
-                        sh "docker-compose down || true"
-                        sh "IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d"
-                    }
-                }
-            }
-        }
-
-        stage('Verify Deployment') {
-            steps {
-                script {
-                    sleep(time: 10, unit: 'SECONDS')
-                    sh "curl -I http://localhost:${APP_PORT} || true"
-                }
-            }
-        }
+        // ... rest of your stages ...
     }
 
     post {
         always {
             cleanWs()
-        }
-        success {
-            script {
-                mail(
-                    to: "${SLACK_EMAIL}",
-                    subject: "SUCCESS: ${PROJECT_NAME} deployed",
-                    body: """
-                    Deployment successful!
-                    Image: ${PROJECT_NAME}:${IMAGE_TAG}
-                    Port: ${APP_PORT}
-                    Commit: ${env.COMMIT_HASH}
-                    Build URL: ${env.BUILD_URL}
-                    """
-                )
-            }
-        }
-        failure {
-            script {
-                mail(
-                    to: "${SLACK_EMAIL}",
-                    subject: "FAILED: ${PROJECT_NAME} build",
-                    body: """
-                    Build failed!
-                    Project: ${PROJECT_NAME}
-                    Build URL: ${env.BUILD_URL}
-                    """
-                )
-            }
         }
     }
 }
