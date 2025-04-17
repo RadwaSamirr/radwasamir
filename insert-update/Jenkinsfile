@@ -4,19 +4,14 @@ pipeline {
     environment {
         IMAGE_TAG = "v${env.BUILD_NUMBER}"
         PROJECT_NAME = "radwasamir"
-        APP_PORT = "2222"  // Or use dynamic port assignment
+        APP_PORT = "2222"
         SLACK_CHANNEL = "#project"
     }
 
     stages {
         stage('Clean Workspace') {
-            steps { cleanWs() }
-        }
-
-        stage('Check Tools') {
             steps {
-                sh "docker --version"
-                sh "docker-compose --version || echo 'Warning: docker-compose not installed'"
+                cleanWs()
             }
         }
 
@@ -26,46 +21,59 @@ pipeline {
                 script {
                     echo "Repository structure:"
                     sh "ls -la"
-                    if (!fileExists("insert-update/Dockerfile")) {
-                        error("❌ Missing Dockerfile in insert-update/")
-                    }
+                    echo "insert-update contents:"
+                    sh "ls -la insert-update || true"
                 }
             }
         }
 
-        stage('Build & Test') {
-            parallel {
-                stage('Build') {
-                    steps {
-                        dir("insert-update") {
-                            docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
-                        }
-                    }
-                }
-                stage('Test') {
-                    steps {
-                        dir("insert-update") {
-                            sh "docker-compose run --rm app npm test"  // Example test command
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Deploy') {
+        stage('Verify Files') {
             steps {
-                dir("insert-update") {
-                    sh "docker-compose down || true"
-                    sh "IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d --build"
-                    
-                    // Health check with retries
-                    retry(3) {
-                        sleep 10  // Wait for the container to start
-                        def health = sh(
-                            script: "curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:${APP_PORT} || echo '000'",
-                            returnStdout: true
-                        ).trim()
-                        if (health != "200") error("Health check failed (Status: ${health})")
+                script {
+                    if (!fileExists("insert-update/Dockerfile")) {
+                        error("""
+                        ❌ Missing Dockerfile!
+                        insert-update contents:
+                        ${sh(script: "ls -la insert-update", returnStdout: true)}
+                        """)
+                    }
+                    if (!fileExists("insert-update/docker-compose.yml")) {
+                        error("❌ Missing docker-compose.yml in insert-update")
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    dir("insert-update") {
+                        docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
+                    }
+                }
+            }
+        }
+
+        stage('Deploy Application') {
+            steps {
+                script {
+                    dir("insert-update") {
+                        sh """
+                        docker-compose down || true
+                        IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d
+                        """
+                        
+                        // Health check with retries
+                        retry(3) {
+                            sleep 10
+                            def health = sh(
+                                script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:${APP_PORT} || echo '000'",
+                                returnStdout: true
+                            ).trim()
+                            if (health != "200") {
+                                error("Deployment health check failed (Status: ${health})")
+                            }
+                        }
                     }
                 }
             }
@@ -73,18 +81,32 @@ pipeline {
     }
 
     post {
-        always { cleanWs() }
+        always {
+            cleanWs()
+        }
         success {
-            slackSend(
-                channel: env.SLACK_CHANNEL,
-                message: "✅ Success! ${PROJECT_NAME}:${IMAGE_TAG} deployed on port ${APP_PORT}"
-            )
+            script {
+                slackSend(
+                    channel: env.SLACK_CHANNEL,
+                    color: "good",
+                    message: """✅ Deployment Success!
+                    |Project: ${PROJECT_NAME}:${IMAGE_TAG}
+                    |Port: ${APP_PORT}
+                    |<${env.BUILD_URL}|View Build>""".stripMargin()
+                )
+            }
         }
         failure {
-            slackSend(
-                channel: env.SLACK_CHANNEL,
-                message: "❌ Failed! Check ${env.BUILD_URL}"
-            )
+            script {
+                slackSend(
+                    channel: env.SLACK_CHANNEL,
+                    color: "danger",
+                    message: """❌ Deployment Failed!
+                    |Project: ${PROJECT_NAME}
+                    |Build: #${env.BUILD_NUMBER}
+                    |<${env.BUILD_URL}|Investigate>""".stripMargin()
+                )
+            }
         }
     }
 }
