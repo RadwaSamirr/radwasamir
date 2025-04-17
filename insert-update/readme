@@ -1,0 +1,58 @@
+A simple web application to display and update a scoreboard. Built with Flask and uses a PostgreSQL database.
+
+## Overview
+
+This application provides a basic scoreboard with the following features:
+
+* **View Score:** Displays the current wins, losses, and ties on a clean web page.
+* **Update Score:** Allows users to input new values for wins, losses, and ties through a form.
+* **Reset Component (Optional):** Provides an option to reset individual score components (Wins, Losses, Ties) to zero.
+* **API Endpoints:** Includes API endpoints for programmatic access to get and update the score.
+* **Swagger UI:** Offers a user-friendly interface to explore the available API endpoints.
+* **Database Persistence:** Uses a PostgreSQL database to store the score data, ensuring it persists across application restarts.
+
+## Technologies Used
+
+* [Python](https://www.python.org/)
+* [Flask](https://flask.palletsprojects.com/) - A micro web framework for Python.
+* [Flask-SQLAlchemy](https://flask-sqlalchemy.palletsprojects.com/) - An extension for Flask that adds support for SQLAlchemy.
+* [PostgreSQL](https://www.postgresql.org/) - A powerful, open-source relational database system.
+* [Docker](https://www.docker.com/) - A platform for containerizing applications.
+* [Docker Compose](https://docs.docker.com/compose/) - A tool for defining and managing multi-container Docker applications.
+* [Jinja2](https://jinja.palletsprojects.com/) - A template engine for Python (used by Flask).
+
+## How to Run the App (using Docker Compose)
+
+This is the recommended way to run the application, as it sets up both the Flask app and the PostgreSQL database in isolated containers.
+
+1.  **Prerequisites:**
+    * Make sure you have [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) installed on your system.
+
+2.git clone <YOUR_REPOSITORY_URL>
+    cd insert-update
+
+3.  **Start the Application:**
+    Navigate to the project directory in your terminal and run:
+    docker-compose up -d --build
+    
+    This command will:
+    * Build the Docker image for the Flask application based on the `Dockerfile`.
+    * Pull the PostgreSQL Docker image.
+    * Create and start containers for both the Flask app (`web`) and the PostgreSQL database (`db`).
+    * Set up the necessary network and environment variables.
+
+4.  **Access the Application:**
+    Once the containers are running, you can access the application in your web browser at:
+    http://localhost:2222/
+    
+
+5.You can explore the API endpoints using Swagger UI at:
+    ```
+    http://localhost:2222/api/docs
+    ```
+
+6.  **Stop the Application:**
+    To stop and remove the containers, run:
+    docker-compose down
+    
+-----------------------------------------------------
