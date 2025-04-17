@@ -48,7 +48,7 @@ pipeline {
             steps {
                 script {
                     dir("insert-update") {
-                      sh "docker build -t ${PROJECT_NAME}:${IMAGE_TAG} ."
+                        sh "docker build -t ${PROJECT_NAME}:${IMAGE_TAG} ."
                     }
                 }
             }
@@ -92,7 +92,9 @@ pipeline {
                     message: """✅ Deployment Success!
                     |Project: ${PROJECT_NAME}:${IMAGE_TAG}
                     |Port: ${APP_PORT}
-                    |<${env.BUILD_URL}|View Build>""".stripMargin()
+                    |<${env.BUILD_URL}|View Build>""".stripMargin(),
+                    tokenCredentialId: 'slack',
+                    teamDomain: 'internship-dkk8872'
                 )
             }
         }
@@ -104,7 +106,9 @@ pipeline {
                     message: """❌ Deployment Failed!
                     |Project: ${PROJECT_NAME}
                     |Build: #${env.BUILD_NUMBER}
-                    |<${env.BUILD_URL}|Investigate>""".stripMargin()
+                    |<${env.BUILD_URL}|Investigate>""".stripMargin(),
+                    tokenCredentialId: 'slack',
+                    teamDomain: 'internship-dkk8872'
                 )
             }
         }
