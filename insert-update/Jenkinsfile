@@ -48,7 +48,7 @@ pipeline {
             steps {
                 script {
                     dir("insert-update") {
-                        docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
+                      sh "docker build -t ${PROJECT_NAME}:${IMAGE_TAG} ."
                     }
                 }
             }
