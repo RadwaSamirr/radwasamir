@@ -4,6 +4,7 @@ pipeline {
     environment {
         IMAGE_TAG = "v${env.BUILD_NUMBER}"
         PROJECT_NAME = "radwasamir"
+        APP_PORT = "2222"
         SLACK_CHANNEL = "#project"
     }
 
