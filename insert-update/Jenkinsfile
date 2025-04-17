@@ -27,23 +27,6 @@ pipeline {
             }
         }
 
-        stage('Verify Files') {
-            steps {
-                script {
-                    if (!fileExists("insert-update/Dockerfile")) {
-                        error("""
-                        ❌ Missing Dockerfile!
-                        insert-update contents:
-                        ${sh(script: "ls -la insert-update", returnStdout: true)}
-                        """)
-                    }
-                    if (!fileExists("insert-update/docker-compose.yml")) {
-                        error("❌ Missing docker-compose.yml in insert-update")
-                    }
-                }
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
                 script {
