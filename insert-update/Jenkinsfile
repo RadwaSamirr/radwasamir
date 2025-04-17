@@ -5,6 +5,7 @@ pipeline {
         IMAGE_TAG = "v${env.BUILD_NUMBER}"
         PROJECT_NAME = "radwasamir"
         APP_PORT = "2222"
+        SLACK_CHANNEL = "#project" // Add this to avoid missing env var error
     }
 
     stages {
@@ -18,7 +19,10 @@ pipeline {
             steps {
                 script {
                     if (!fileExists('insert-update/Dockerfile')) {
-                        error("Dockerfile not found in insert-update directory")
+                        error("❌ Dockerfile not found in insert-update directory")
+                    }
+                    if (!fileExists('insert-update/docker-compose.yml')) {
+                        error("❌ docker-compose.yml not found in insert-update directory")
                     }
                 }
             }
@@ -27,7 +31,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Must wrap docker.build in a script block
+                    // Build Docker image from 'insert-update' context
                     docker.build("${PROJECT_NAME}:${IMAGE_TAG}", "insert-update")
                 }
             }
@@ -38,57 +42,21 @@ pipeline {
                 script {
                     dir('insert-update') {
                         sh "docker-compose down || true"
-                        sh "IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d"
+                        sh """
+                        IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} \
+                        docker-compose up -d --build --force-recreate
+                        """
                     }
                 }
             }
         }
     }
 
-  post {
+    post {
         always {
             cleanWs()
         }
+
         success {
             script {
-                echo """
-                🎉 Successfully deployed ${PROJECT_NAME}:${IMAGE_TAG}
-                Access URL: http://your-server:${APP_PORT}
-                """
-                
-                // Slack notification
-                slackSend(
-                    channel: env.SLACK_CHANNEL,
-                    color: "good",
-                    message: """✅ Deployment Success!
-                    |Project: ${PROJECT_NAME}:${IMAGE_TAG}
-                    |Port: ${APP_PORT}
-                    |Commit: ${sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()}
-                    |<${env.BUILD_URL}|View Build>""".stripMargin()
-                )
-            }
-        }
-        failure {
-            script {
-                echo """
-                ❌ Deployment failed!
-                Troubleshooting:
-                1. Check Dockerfile in insert-update/
-                2. Verify docker-compose.yml
-                3. Inspect logs: ${env.BUILD_URL}
-                """
-                
-                // Slack notification
-                slackSend(
-                    channel: env.SLACK_CHANNEL,
-                    color: "danger",
-                    message: """❌ Deployment Failed!
-                    |Project: ${PROJECT_NAME}
-                    |Build: #${env.BUILD_NUMBER}
-                    |<${env.BUILD_URL}|Investigate>""".stripMargin()
-                )
-            }
-        }
-    }
-}
-}
+                def commitHash = sh(script: 'git rev
