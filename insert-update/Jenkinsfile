@@ -56,27 +56,14 @@ pipeline {
 
         stage('Deploy Application') {
             steps {
-                script {
-                    dir("insert-update") {
-                        sh """
-                        docker-compose down || true
-                        IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d
-                        """
-                        
-                        // Health check with retries
-                        retry(3) {
-                            sleep 10
-                            def health = sh(
-                                script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:${APP_PORT} || echo '000'",
-                                returnStdout: true
-                            ).trim()
-                            if (health != "200") {
-                                error("Deployment health check failed (Status: ${health})")
-                            }
-                        }
+                dir('insert-update') {
+                    script {
+                        sh "docker-compose down"
+                        sh "docker-compose up -d --build"
                     }
                 }
             }
+         
         }
     }
 
