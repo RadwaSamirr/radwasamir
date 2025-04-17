@@ -4,41 +4,68 @@ pipeline {
     environment {
         IMAGE_TAG = "v${env.BUILD_NUMBER}"
         PROJECT_NAME = "radwasamir"
-        APP_PORT = "2222"
+        APP_PORT = "2222"  // Or use dynamic port assignment
+        SLACK_CHANNEL = "#project"
     }
 
     stages {
-        stage('Checkout') {
+        stage('Clean Workspace') {
+            steps { cleanWs() }
+        }
+
+        stage('Check Tools') {
             steps {
-                checkout scm
+                sh "docker --version"
+                sh "docker-compose --version || echo 'Warning: docker-compose not installed'"
             }
         }
 
-        stage('Verify Files') {
+        stage('Checkout Code') {
             steps {
+                checkout scm
                 script {
-                    if (!fileExists('insert-update/Dockerfile')) {
-                        error("Dockerfile not found in insert-update directory")
+                    echo "Repository structure:"
+                    sh "ls -la"
+                    if (!fileExists("insert-update/Dockerfile")) {
+                        error("❌ Missing Dockerfile in insert-update/")
                     }
                 }
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    // Must wrap docker.build in a script block
-                    docker.build("${PROJECT_NAME}:${IMAGE_TAG}", "insert-update")
+        stage('Build & Test') {
+            parallel {
+                stage('Build') {
+                    steps {
+                        dir("insert-update") {
+                            docker.build("${PROJECT_NAME}:${IMAGE_TAG}")
+                        }
+                    }
+                }
+                stage('Test') {
+                    steps {
+                        dir("insert-update") {
+                            sh "docker-compose run --rm app npm test"  // Example test command
+                        }
+                    }
                 }
             }
         }
 
         stage('Deploy') {
             steps {
-                script {
-                    dir('insert-update') {
-                        sh "docker-compose down || true"
-                        sh "IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d"
+                dir("insert-update") {
+                    sh "docker-compose down || true"
+                    sh "IMAGE_TAG=${IMAGE_TAG} APP_PORT=${APP_PORT} docker-compose up -d --build"
+                    
+                    // Health check with retries
+                    retry(3) {
+                        sleep 10  // Wait for the container to start
+                        def health = sh(
+                            script: "curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:${APP_PORT} || echo '000'",
+                            returnStdout: true
+                        ).trim()
+                        if (health != "200") error("Health check failed (Status: ${health})")
                     }
                 }
             }
@@ -46,9 +73,18 @@ pipeline {
     }
 
     post {
-        always {
-            cleanWs()
+        always { cleanWs() }
+        success {
+            slackSend(
+                channel: env.SLACK_CHANNEL,
+                message: "✅ Success! ${PROJECT_NAME}:${IMAGE_TAG} deployed on port ${APP_PORT}"
+            )
+        }
+        failure {
+            slackSend(
+                channel: env.SLACK_CHANNEL,
+                message: "❌ Failed! Check ${env.BUILD_URL}"
+            )
         }
     }
-
 }
