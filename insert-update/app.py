@@ -7,12 +7,12 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# Database Configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+# Configurations
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///app.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# Define the Score Model
+# Define model
 class Score(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     wins = db.Column(db.Integer, default=0)
@@ -22,21 +22,20 @@ class Score(db.Model):
     def to_dict(self):
         return {'wins': self.wins, 'losses': self.losses, 'ties': self.ties}
 
+# Swagger config
 API_URL = '/static/openapi.yaml'
 SWAGGER_URL = '/api/docs'
 
 swaggerui_blueprint = get_swaggerui_blueprint(
     SWAGGER_URL,
     API_URL,
-    config={
-        'app_name': "RPS"
-    },
+    config={'app_name': "RPS"}
 )
 app.register_blueprint(swaggerui_blueprint)
 
-@app.route("/", methods=['GET'])
+# Routes
+@app.route("/")
 def index():
-    """Renders the score HTML page."""
     score_data = Score.query.first()
     if score_data:
         return render_template('index.html', score=score_data.to_dict())
@@ -44,7 +43,6 @@ def index():
 
 @app.route("/score", methods=['GET'])
 def get_score():
-    """Get the current score from the database (for API requests)."""
     score_data = Score.query.first()
     if score_data:
         return jsonify(score_data.to_dict())
@@ -52,7 +50,6 @@ def get_score():
 
 @app.route("/score", methods=['PUT'])
 def set_score():
-    """Set a new score in the database (from HTML form)."""
     data = request.get_json()
     score_data = Score.query.first()
     if score_data:
@@ -67,7 +64,6 @@ def set_score():
 
 @app.route("/score/<component>", methods=['DELETE'])
 def delete_score_component(component):
-    """Resets a specific score component to zero."""
     if component not in ['wins', 'losses', 'ties']:
         return jsonify({"error": "Invalid component"}), 400
 
@@ -76,14 +72,38 @@ def delete_score_component(component):
         setattr(score_data, component, 0)
         db.session.commit()
         return '', 204
-    else:
-        return jsonify({"message": "No score data found"}), 404
+    return jsonify({"message": "No score data found"}), 404
 
-@app.route('/health-check')
+@app.route("/health-check")
 def health_check():
     return 'snafu: situation normal all fired up!'
 
+# Run app
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
     app.run(host='0.0.0.0', port=5000, debug=True)
+
+# ----------- TESTS SECTION (included in same file) -----------
+def run_tests():
+    import pytest
+
+    @pytest.fixture
+    def client():
+        app.config['TESTING'] = True
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        with app.test_client() as client:
+            with app.app_context():
+                db.create_all()
+            yield client
+
+    def test_health_check(client):
+        res = client.get('/health-check')
+        assert res.status_code == 200
+        assert b'snafu' in res.data
+
+    def test_get_score_empty(client):
+        res = client.get('/score')
+        assert res.status_code == 404
+
+# To run: `pytest app.py`
