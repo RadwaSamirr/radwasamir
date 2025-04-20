@@ -7,6 +7,7 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir Flask
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install pytest
 
 COPY . .
 COPY templates /app/templates
