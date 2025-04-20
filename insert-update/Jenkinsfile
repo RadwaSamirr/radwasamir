@@ -40,7 +40,7 @@ pipeline {
         stage('Test Application') {
             steps {
                 dir('insert-update') {
-                    sh 'pytest app.py --maxfail=1 --disable-warnings'
+                    sh 'docker run --rm radwasamir:v48 pytest app.py --maxfail=1 --disable-warnings'
                 }
             }
         }
