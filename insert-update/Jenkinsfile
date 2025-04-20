@@ -36,14 +36,15 @@ pipeline {
                 }
             }
         }
-        stage('Run Tests') {
+
+        stage('Test Application') {
             steps {
-                dir("insert-update") {
+                dir('insert-update') {
                     sh 'pytest app.py --maxfail=1 --disable-warnings'
-                    }
                 }
             }
         }
+
         stage('Deploy Application') {
             steps {
                 dir('insert-update') {
@@ -53,7 +54,6 @@ pipeline {
                     }
                 }
             }
-         
         }
     }
 
@@ -61,6 +61,7 @@ pipeline {
         always {
             cleanWs()
         }
+
         success {
             script {
                 slackSend(
@@ -75,6 +76,7 @@ pipeline {
                 )
             }
         }
+
         failure {
             script {
                 slackSend(
