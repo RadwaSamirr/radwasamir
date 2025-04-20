@@ -30,7 +30,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    dir("InternProject/Radwa/Docker/insert-update") {
+                    dir("insert-update") {
                         sh "docker build -t ${PROJECT_NAME}:${IMAGE_TAG} ."
                     }
                 }
@@ -39,7 +39,7 @@ pipeline {
 
         stage('Deploy Application') {
             steps {
-                dir('InternProject/Radwa/Docker/insert-update') {
+                dir('insert-update') {
                     script {
                         sh "docker-compose down"
                         sh "docker-compose up -d --build"
