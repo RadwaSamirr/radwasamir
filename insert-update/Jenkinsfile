@@ -39,11 +39,7 @@ pipeline {
         stage('Run Tests') {
             steps {
                 dir("insert-update") {
-                    script {
-                        sh """
-                        docker run --rm ${PROJECT_NAME}:${IMAGE_TAG} \
-                        python -m unittest discover -s tests -p "*.py"
-                        """
+                    sh 'pytest app.py --maxfail=1 --disable-warnings'
                     }
                 }
             }
