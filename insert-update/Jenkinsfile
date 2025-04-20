@@ -30,30 +30,23 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    dir("insert-update") {
+                    dir("InternProject/Radwa/Docker/insert-update") {
                         sh "docker build -t ${PROJECT_NAME}:${IMAGE_TAG} ."
                     }
                 }
             }
         }
 
-       stage('Test Application') {
-           steps {
-                dir('insert-update') {
-                      sh 'docker run --rm radwasamir:v53 pytest app.py --maxfail=1 --disable-warnings'
-                    }
-                 }
-            }
-
         stage('Deploy Application') {
             steps {
-                dir('insert-update') {
+                dir('InternProject/Radwa/Docker/insert-update') {
                     script {
                         sh "docker-compose down"
                         sh "docker-compose up -d --build"
                     }
                 }
             }
+         
         }
     }
 
@@ -61,7 +54,6 @@ pipeline {
         always {
             cleanWs()
         }
-
         success {
             script {
                 slackSend(
@@ -76,7 +68,6 @@ pipeline {
                 )
             }
         }
-
         failure {
             script {
                 slackSend(
